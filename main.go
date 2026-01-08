@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
+	"os"
 )
 
 type Handler func(url *url.URL) error
@@ -12,15 +14,42 @@ type viaDispatch struct {
 }
 
 func (vd *viaDispatch) AddCommand(verb string, handler Handler) *viaCommand {
-	vc := &viaCommand{verb: verb}
+	vc := &viaCommand{verb: verb, handler: handler}
 	vd.commands = append(vd.commands, vc)
 	return vc
+}
+
+func (vd *viaDispatch) Serve(args ...string) error {
+
+	// TODO implement default command handling
+
+	if len(args) == 0 {
+		return errors.New("missing args")
+	}
+
+	cmdArg := args[0]
+
+	for _, cmd := range vd.commands {
+		if cmd.verb == cmdArg {
+			if u, err := cmd.parse(args...); err == nil {
+				return cmd.handler(u)
+			} else {
+				return err
+			}
+		}
+	}
+
+	return errors.New("not a valid command verb: " + cmdArg)
 }
 
 type viaCommand struct {
 	verb       string
 	handler    Handler
 	parameters []*viaParameter
+}
+
+func (vc *viaCommand) parse(args ...string) (*url.URL, error) {
+	return new(url.URL), nil
 }
 
 type viaParameter struct {
@@ -68,8 +97,8 @@ func main() {
 
 	vd := new(viaDispatch)
 
-	vd.AddCommand("backup", nil)
-	cleanup := vd.AddCommand("cleanup", nil)
+	vd.AddCommand("backup", echoHandler)
+	cleanup := vd.AddCommand("cleanup", echoHandler)
 
 	cleanup.AddParameter("id", OptDefault, OptMultipleValues)
 	cleanup.AddParameter("slug", OptMultipleValues)
@@ -81,6 +110,13 @@ func main() {
 	cleanup.AddParameter("all", OptBoolean)
 	cleanup.AddParameter("test", OptBoolean)
 
-	fmt.Println(vd)
+	if err := vd.Serve(os.Args[1:]...); err != nil {
+		panic(err)
+	}
 
+}
+
+func echoHandler(u *url.URL) error {
+	fmt.Println(u)
+	return nil
 }
